@@ -1,8 +1,24 @@
-const express= require('express')
-const app = express()
+require('dotenv').config();  // Load environment variables from .env file
 
-app.get("/api", (req, res) =>{
-    res.json({"users": ["UserOne", "UserTwo", "userThree", "userFour"]})
-})
+const express = require('express');
+const cors = require('cors');
+const app = express();
 
-app.listen(5001, () => { console.log("server started on port 5001")})
+
+
+app.use(cors());
+
+const PORT = process.env.PORT || 5001;
+
+app.get("/api", (req, res) => {
+    console.log("Received request on /api route");
+    res.json({ "users": ["UserOne", "UserTwo", "UserThree", "UserFour", "UserFour"] });
+});
+
+app.listen(PORT, () => {
+    
+    console.log(`Server started on port ${PORT}`);
+});
+
+
+  // This allows requests from any origin, including http://localhost:3000
