@@ -27,12 +27,17 @@ jobs:
           cd server
           npm install
 
-      # Step 4: Build the frontend
+      # Step 4: Install frontend dependencies & build
       - name: Install frontend dependencies & build
         run: |
           cd client
           npm install
           npm run build
+
+          if [ ! -d "dist" ]; then
+            echo "Build failed: 'dist' directory not found!"
+            exit 1
+          fi
           cd ..
 
       # Step 5: Deploy Backend & Frontend to EC2
@@ -44,7 +49,7 @@ jobs:
           REMOTE_USER: ${{ secrets.USERNAME }}
           TARGET: /home/ubuntu/app  # Ensure code is deployed to this directory
 
-      # Step 6: Run deployment commands on EC2
+      # Step 6: SSH into EC2 & Restart Services
       - name: SSH into EC2 & Restart Services
         uses: appleboy/ssh-action@master
         with:
@@ -61,7 +66,7 @@ jobs:
             npm install
 
             # Restart PM2 process correctly
-            pm2 delete all
+            pm2 delete all || true
             pm2 start server.js --name "server"
             pm2 save
 
@@ -73,8 +78,13 @@ jobs:
               exit 1
             fi
 
-            # Navigate to frontend, clear old files, and copy new build to Nginx
+            # Navigate to frontend, clear old files, and check for 'dist' directory before copying
             cd /home/ubuntu/app/client
+            if [ ! -d "dist" ]; then
+              echo "Error: 'dist' directory not found! Exiting deployment..."
+              exit 1
+            fi
+
             sudo rm -rf /var/www/html/*
             sudo cp -r dist/* /var/www/html/
 
