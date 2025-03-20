@@ -26,6 +26,7 @@ jobs:
         run: |
           cd server
           npm install
+          npm install dotenv cors  # Ensure dotenv and cors are installed
 
       # Step 4: Build the frontend
       - name: Install frontend dependencies & build
@@ -44,7 +45,7 @@ jobs:
           REMOTE_USER: ec2-user  # Amazon Linux uses 'ec2-user'
           TARGET: /home/ec2-user/app  # Change deployment path to match Amazon Linux
 
-      # Step 6: Run deployment commands on EC2
+      # Step 6: SSH into EC2 & Restart Services
       - name: SSH into EC2 & Restart Services
         uses: appleboy/ssh-action@master
         with:
@@ -56,9 +57,10 @@ jobs:
 
             echo "Starting Deployment on EC2 (Amazon Linux 2023)"
 
-            # Navigate to backend, install dependencies, and restart backend
+            # Navigate to backend and install dependencies
             cd /home/ec2-user/app/server
             npm install
+            npm install dotenv cors  # Ensure dotenv and cors are installed
 
             # Restart PM2 process correctly
             pm2 delete all || true  # Ignore errors if no processes exist
