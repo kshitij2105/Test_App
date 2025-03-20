@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     name: Deploy to AWS EC2
-    runs-on: ec2-user
+    runs-on: ubuntu-latest
 
     steps:
       # Step 1: Checkout the repository
