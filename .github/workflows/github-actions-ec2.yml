@@ -3,7 +3,7 @@ name: Deploy Node.js + React to EC2
 on:
   push:
     branches:
-      - main  # Trigger deployment when code is pushed to main
+      - master  # Runs only when code is pushed to master
 
 jobs:
   deploy:
@@ -42,7 +42,7 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           REMOTE_HOST: ${{ secrets.HOST_DNS }}
           REMOTE_USER: ${{ secrets.USERNAME }}
-          TARGET: /home/ubuntu/app
+          TARGET: /home/ubuntu/app  # Ensure code is deployed to this directory
 
       # Step 6: Run deployment commands on EC2
       - name: SSH into EC2 & Restart Services
@@ -52,16 +52,29 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            # Navigate to server, install dependencies, and restart backend
+            set -e  # Stop execution if any command fails (rollback prevention)
+            
+            echo "Starting Deployment on EC2"
+
+            # Navigate to backend, install dependencies, and restart backend
             cd /home/ubuntu/app/server
             npm install
             pm2 restart server.js || pm2 start server.js
 
-            # Navigate to client, clear old files, and copy new build to Nginx
+            # Ensure .env file is copied correctly
+            if [ -f /home/ubuntu/app/server/.env ]; then
+              echo ".env file exists, proceeding..."
+            else
+              echo ".env file missing! Exiting deployment..."
+              exit 1
+            fi
+
+            # Navigate to frontend, clear old files, and copy new build to Nginx
             cd /home/ubuntu/app/client
             rm -rf /var/www/html/*
             cp -r dist/* /var/www/html/
 
             # Restart Nginx to apply changes
             sudo systemctl restart nginx
-            echo "Deployment complete!"
+
+            echo "Deployment completed successfully!"
