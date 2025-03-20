@@ -59,7 +59,11 @@ jobs:
             # Navigate to backend, install dependencies, and restart backend
             cd /home/ubuntu/app/server
             npm install
-            pm2 restart server.js || pm2 start server.js
+
+            # Restart PM2 process correctly
+            pm2 delete all
+            pm2 start server.js --name "server"
+            pm2 save
 
             # Ensure .env file is copied correctly
             if [ -f /home/ubuntu/app/server/.env ]; then
@@ -71,8 +75,8 @@ jobs:
 
             # Navigate to frontend, clear old files, and copy new build to Nginx
             cd /home/ubuntu/app/client
-            rm -rf /var/www/html/*
-            cp -r dist/* /var/www/html/
+            sudo rm -rf /var/www/html/*
+            sudo cp -r dist/* /var/www/html/
 
             # Restart Nginx to apply changes
             sudo systemctl restart nginx
