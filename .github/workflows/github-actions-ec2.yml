@@ -64,7 +64,7 @@ jobs:
 
             # Restart PM2 process correctly
             pm2 delete all || true  # Ignore errors if no processes exist
-            pm2 start server.js --name "server"
+            pm2 restart all || pm2 start server.js --name "backend" --watch
             pm2 save
 
             # Ensure .env file is copied correctly
