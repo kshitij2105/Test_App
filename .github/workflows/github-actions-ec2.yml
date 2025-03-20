@@ -42,7 +42,7 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           REMOTE_HOST: ${{ secrets.HOST_DNS }}
           REMOTE_USER: ${{ secrets.USERNAME }}
-          TARGET: /home/ec2-user/app  # Ensure code is deployed to this directory
+          TARGET: /home/ubuntu/app  # Ensure code is deployed to this directory
 
       # Step 6: Run deployment commands on EC2
       - name: SSH into EC2 & Restart Services
@@ -57,7 +57,7 @@ jobs:
             echo "Starting Deployment on EC2"
 
             # Navigate to backend, install dependencies, and restart backend
-            cd /home/ec2-user/app/server
+            cd /home/ubuntu/app/server
             npm install
 
             # Restart PM2 process correctly
@@ -66,7 +66,7 @@ jobs:
             pm2 save
 
             # Ensure .env file is copied correctly
-            if [ -f /home/ec2-user/app/server/.env ]; then
+            if [ -f /home/ubuntu/app/server/.env ]; then
               echo ".env file exists, proceeding..."
             else
               echo ".env file missing! Exiting deployment..."
