@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     name: Deploy to AWS EC2
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # Change this if using a self-hosted runner
 
     steps:
       # Step 1: Checkout the repository
@@ -41,32 +41,32 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           REMOTE_HOST: ${{ secrets.HOST_DNS }}
-          REMOTE_USER: ${{ secrets.USERNAME }}
-          TARGET: /home/ubuntu/app  # Ensure code is deployed to this directory
+          REMOTE_USER: ec2-user  # Amazon Linux uses 'ec2-user'
+          TARGET: /home/ec2-user/app  # Change deployment path to match Amazon Linux
 
       # Step 6: Run deployment commands on EC2
       - name: SSH into EC2 & Restart Services
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST_DNS }}
-          username: ${{ secrets.USERNAME }}
+          username: ec2-user  # Amazon Linux default user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e  # Stop execution if any command fails (rollback prevention)
-            
-            echo "Starting Deployment on EC2"
+
+            echo "Starting Deployment on EC2 (Amazon Linux 2023)"
 
             # Navigate to backend, install dependencies, and restart backend
-            cd /home/ubuntu/app/server
+            cd /home/ec2-user/app/server
             npm install
 
             # Restart PM2 process correctly
-            pm2 delete all
+            pm2 delete all || true  # Ignore errors if no processes exist
             pm2 start server.js --name "server"
             pm2 save
 
             # Ensure .env file is copied correctly
-            if [ -f /home/ubuntu/app/server/.env ]; then
+            if [ -f /home/ec2-user/app/server/.env ]; then
               echo ".env file exists, proceeding..."
             else
               echo ".env file missing! Exiting deployment..."
@@ -74,9 +74,9 @@ jobs:
             fi
 
             # Navigate to frontend, clear old files, and copy new build to Nginx
-            cd /home/ubuntu/app/client
-            sudo rm -rf /var/www/html/*
-            sudo cp -r build/* /var/www/html/
+            cd /home/ec2-user/app/client
+            sudo rm -rf /usr/share/nginx/html/*
+            sudo cp -r build/* /usr/share/nginx/html/
 
             # Restart Nginx to apply changes
             sudo systemctl restart nginx
