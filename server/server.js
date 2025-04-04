@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 5001;
 
 app.get("/api", (req, res) => {
     console.log("Received request on /api route");
-    res.json({ "users": ["UserOne", "UserTwo", "UserThree","UserFour","UserFive","UserSix","User 7"] });
+    res.json({ "users": ["UserOne", "UserTwo", "UserThree","UserFour","UserFive","UserSix","Kshitij"] });
 });
 
 app.listen(PORT, () => {
