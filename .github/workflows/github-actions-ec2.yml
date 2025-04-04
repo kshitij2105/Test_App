@@ -44,7 +44,7 @@ jobs:
           REMOTE_HOST: ${{ secrets.HOST_DNS }}
           REMOTE_USER: ec2-user  # Amazon Linux default user
           TARGET: /home/ec2-user/Test_App  # Deployment path
-          ARGS: "-rltgoDzvO --progress --exclude='.git'"  # Ensures build is copied
+          ARGS: "-rltgoDzvO --progress --exclude='node_modules' --exclude='.git'"  # Ensures build is copied
 
       # Step 6: SSH into EC2 & Restart Services
       - name: SSH into EC2 & Restart Services
