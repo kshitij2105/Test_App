@@ -42,8 +42,8 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
           REMOTE_HOST: ${{ secrets.HOST_DNS }}
-          REMOTE_USER: ec2-user  # Amazon Linux uses 'ec2-user'
-          TARGET: /home/ec2-user/app  # Change deployment path to match Amazon Linux
+          REMOTE_USER: ec2-user  # Amazon Linux default user
+          TARGET: /home/ec2-user/Test_App  # Updated deployment path
 
       # Step 6: SSH into EC2 & Restart Services
       - name: SSH into EC2 & Restart Services
@@ -58,7 +58,7 @@ jobs:
             echo "Starting Deployment on EC2 (Amazon Linux 2023)"
 
             # Navigate to backend and install dependencies
-            cd /home/ec2-user/app/server
+            cd /home/ec2-user/Test_App/server
             npm install
             npm install dotenv cors  # Ensure dotenv and cors are installed
 
@@ -68,7 +68,7 @@ jobs:
             pm2 save
 
             # Ensure .env file is copied correctly
-            if [ -f /home/ec2-user/app/server/.env ]; then
+            if [ -f /home/ec2-user/Test_App/server/.env ]; then
               echo ".env file exists, proceeding..."
             else
               echo ".env file missing! Exiting deployment..."
@@ -76,7 +76,7 @@ jobs:
             fi
 
             # Navigate to frontend, clear old files, and copy new build to Nginx
-            cd /home/ec2-user/app/client
+            cd /home/ec2-user/Test_App/client
             sudo rm -rf /usr/share/nginx/html/*
             sudo cp -r build/* /usr/share/nginx/html/
 
