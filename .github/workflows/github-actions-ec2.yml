@@ -35,21 +35,13 @@ jobs:
 
           PAYLOAD_HASH=$(hash "$PAYLOAD")
 
-          CANONICAL_REQUEST="POST
-${URI}
-
-host:${HOST}
-x-amz-date:${AMZ_DATE}
-
-host;x-amz-date
-${PAYLOAD_HASH}"
+          CANONICAL_REQUEST=$(printf "POST\n%s\n\nhost:%s\nx-amz-date:%s\n\nhost;x-amz-date\n%s" \
+            "$URI" "$HOST" "$AMZ_DATE" "$PAYLOAD_HASH")
 
           CANONICAL_HASH=$(printf "%s" "$CANONICAL_REQUEST" | openssl dgst -sha256 | sed 's/^.* //')
           CREDENTIAL_SCOPE="${DATE_STAMP}/${AWS_REGION}/${SERVICE}/aws4_request"
-          STRING_TO_SIGN="AWS4-HMAC-SHA256
-${AMZ_DATE}
-${CREDENTIAL_SCOPE}
-${CANONICAL_HASH}"
+          STRING_TO_SIGN=$(printf "AWS4-HMAC-SHA256\n%s\n%s\n%s" \
+            "$AMZ_DATE" "$CREDENTIAL_SCOPE" "$CANONICAL_HASH")
 
           K_DATE=$(hmac "AWS4${AWS_SECRET_ACCESS_KEY}" "$DATE_STAMP")
           K_REGION=$(hmac "$K_DATE" "$AWS_REGION")
@@ -59,6 +51,7 @@ ${CANONICAL_HASH}"
 
           AUTH_HEADER="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${CREDENTIAL_SCOPE}, SignedHeaders=host;x-amz-date, Signature=${SIGNATURE}"
 
+          echo "Invoking Lambda..."
           curl -s -X POST "${ENDPOINT}" \
             -H "Content-Type: application/json" \
             -H "X-Amz-Date: ${AMZ_DATE}" \
