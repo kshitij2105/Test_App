@@ -1,4 +1,4 @@
-name: Invoke Lambda with Debug
+name: Invoke Lambda (CLI)
 
 on:
   workflow_dispatch:
@@ -7,76 +7,21 @@ jobs:
   invoke:
     runs-on: ubuntu-latest
 
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ap-south-1
-      FUNCTION_NAME: Trigger-Backend-Deployment
-      PAYLOAD: '{}'
-
     steps:
-      - name: Install xxd if needed
-        run: sudo apt-get update && sudo apt-get install -y xxd
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Debug Lambda Invocation
+      - name: Invoke Lambda
         run: |
-          SERVICE="lambda"
-          HOST="lambda.${AWS_REGION}.amazonaws.com"
-          URI="/2015-03-31/functions/${FUNCTION_NAME}/invocations"
-          ENDPOINT="https://${HOST}${URI}"
-
-          AMZ_DATE=$(date -u "+%Y%m%dT%H%M%SZ")
-          DATE_STAMP=$(date -u "+%Y%m%d")
-
-          hash() {
-            printf "%s" "$1" | openssl dgst -sha256 | awk '{print $2}'
-          }
-
-          hmac_bin() {
-            local key_hex="$1"
-            local data="$2"
-            printf "%s" "$data" | openssl dgst -sha256 -mac HMAC -macopt hexkey:"$key_hex" | awk '{print $2}'
-          }
-
-          PAYLOAD_HASH=$(hash "$PAYLOAD")
-          echo "Payload Hash: $PAYLOAD_HASH"
-
-          CANONICAL_HEADERS="host:${HOST}\nx-amz-date:${AMZ_DATE}\n"
-          SIGNED_HEADERS="host;x-amz-date"
-          CANONICAL_REQUEST=$(printf "POST\n%s\n\n%s\n%s\n%s" \
-            "$URI" "$CANONICAL_HEADERS" "$SIGNED_HEADERS" "$PAYLOAD_HASH")
-          echo -e "\nCanonical Request:\n$CANONICAL_REQUEST"
-
-          CANONICAL_REQUEST_HASH=$(printf "%s" "$CANONICAL_REQUEST" | openssl dgst -sha256 | awk '{print $2}')
-          CREDENTIAL_SCOPE="${DATE_STAMP}/${AWS_REGION}/${SERVICE}/aws4_request"
-          STRING_TO_SIGN=$(printf "AWS4-HMAC-SHA256\n%s\n%s\n%s" \
-            "$AMZ_DATE" "$CREDENTIAL_SCOPE" "$CANONICAL_REQUEST_HASH")
-          echo -e "\nString to Sign:\n$STRING_TO_SIGN"
-
-          K_SECRET=$(printf "AWS4${AWS_SECRET_ACCESS_KEY}" | xxd -p -c 256)
-          echo "K_SECRET: $K_SECRET"
-
-          K_DATE=$(hmac_bin "$K_SECRET" "$DATE_STAMP")
-          echo "K_DATE: $K_DATE"
-          K_REGION=$(hmac_bin "$K_DATE" "$AWS_REGION")
-          echo "K_REGION: $K_REGION"
-          K_SERVICE=$(hmac_bin "$K_REGION" "$SERVICE")
-          echo "K_SERVICE: $K_SERVICE"
-          K_SIGNING=$(hmac_bin "$K_SERVICE" "aws4_request")
-          echo "K_SIGNING: $K_SIGNING"
-
-          SIGNATURE=$(printf "%s" "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt hexkey:"$K_SIGNING" | awk '{print $2}')
-          echo "Signature: $SIGNATURE"
-
-          AUTH_HEADER="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${CREDENTIAL_SCOPE}, SignedHeaders=${SIGNED_HEADERS}, Signature=${SIGNATURE}"
-
-          echo -e "\nAuthorization Header:\n$AUTH_HEADER"
-
-          echo "Invoking Lambda..."
-          RESPONSE=$(curl -s -X POST "${ENDPOINT}" \
-            -H "Content-Type: application/json" \
-            -H "X-Amz-Date: ${AMZ_DATE}" \
-            -H "Authorization: ${AUTH_HEADER}" \
-            -d "${PAYLOAD}")
-
-          echo -e "\nLambda Response:\n$RESPONSE"
+          aws lambda invoke \
+            --function-name Trigger-Backend-Deployment \
+            --payload '{}' \
+            --cli-binary-format raw-in-base64-out \
+            response.json
+          
+          echo "Lambda invoked. Response:"
+          cat response.json
