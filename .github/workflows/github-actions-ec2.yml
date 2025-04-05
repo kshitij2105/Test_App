@@ -18,7 +18,7 @@ jobs:
       - name: Invoke Lambda Function
         run: |
           aws lambda invoke \
-            --function-name Trigger-Backend-Deployment \
+            --function-name trigger-backend-deployment \
             --payload '{}' \
             --cli-binary-format raw-in-base64-out \
             response.json
