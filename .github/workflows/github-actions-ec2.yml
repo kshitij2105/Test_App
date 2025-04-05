@@ -15,41 +15,49 @@ jobs:
       PAYLOAD: '{}'
 
     steps:
-      - name: Curl invoke Lambda
+      - name: Invoke Lambda via curl
         run: |
           SERVICE="lambda"
           HOST="lambda.${AWS_REGION}.amazonaws.com"
           URI="/2015-03-31/functions/${FUNCTION_NAME}/invocations"
           ENDPOINT="https://${HOST}${URI}"
 
-          AMZ_DATE=$(date -u +"%Y%m%dT%H%M%SZ")
-          DATE_STAMP=$(date -u +"%Y%m%d")
+          AMZ_DATE=$(date -u "+%Y%m%dT%H%M%SZ")
+          DATE_STAMP=$(date -u "+%Y%m%d")
 
           hash() {
-            printf "%s" "$1" | openssl dgst -sha256 | sed 's/^.* //'
+            printf "%s" "$1" | openssl dgst -sha256 -binary | xxd -p -c 256
           }
 
           hmac() {
-            printf "%s" "$2" | openssl dgst -sha256 -mac HMAC -macopt "key:$1" | sed 's/^.* //'
+            printf "%s" "$2" | openssl dgst -sha256 -mac HMAC -macopt "key:$1" -binary
           }
 
+          # Hash the payload
           PAYLOAD_HASH=$(hash "$PAYLOAD")
 
-          CANONICAL_REQUEST=$(printf "POST\n%s\n\nhost:%s\nx-amz-date:%s\n\nhost;x-amz-date\n%s" \
-            "$URI" "$HOST" "$AMZ_DATE" "$PAYLOAD_HASH")
+          # Step 1: Create Canonical Request
+          CANONICAL_HEADERS="host:${HOST}\nx-amz-date:${AMZ_DATE}\n"
+          SIGNED_HEADERS="host;x-amz-date"
+          CANONICAL_REQUEST=$(printf "POST\n%s\n\n%s\n%s\n%s" \
+            "$URI" "$CANONICAL_HEADERS" "$SIGNED_HEADERS" "$PAYLOAD_HASH")
 
-          CANONICAL_HASH=$(printf "%s" "$CANONICAL_REQUEST" | openssl dgst -sha256 | sed 's/^.* //')
+          # Step 2: Create String to Sign
+          CANONICAL_REQUEST_HASH=$(printf "%s" "$CANONICAL_REQUEST" | openssl dgst -sha256 -binary | xxd -p -c 256)
           CREDENTIAL_SCOPE="${DATE_STAMP}/${AWS_REGION}/${SERVICE}/aws4_request"
           STRING_TO_SIGN=$(printf "AWS4-HMAC-SHA256\n%s\n%s\n%s" \
-            "$AMZ_DATE" "$CREDENTIAL_SCOPE" "$CANONICAL_HASH")
+            "$AMZ_DATE" "$CREDENTIAL_SCOPE" "$CANONICAL_REQUEST_HASH")
 
-          K_DATE=$(hmac "AWS4${AWS_SECRET_ACCESS_KEY}" "$DATE_STAMP")
+          # Step 3: Calculate the signature
+          K_SECRET="AWS4${AWS_SECRET_ACCESS_KEY}"
+          K_DATE=$(hmac "$K_SECRET" "$DATE_STAMP")
           K_REGION=$(hmac "$K_DATE" "$AWS_REGION")
           K_SERVICE=$(hmac "$K_REGION" "$SERVICE")
           K_SIGNING=$(hmac "$K_SERVICE" "aws4_request")
-          SIGNATURE=$(printf "%s" "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt "key:$K_SIGNING" | sed 's/^.* //')
+          SIGNATURE=$(printf "%s" "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt key:- <<< "$K_SIGNING" | sed 's/^.* //')
 
-          AUTH_HEADER="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${CREDENTIAL_SCOPE}, SignedHeaders=host;x-amz-date, Signature=${SIGNATURE}"
+          # Step 4: Make the request
+          AUTH_HEADER="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${CREDENTIAL_SCOPE}, SignedHeaders=${SIGNED_HEADERS}, Signature=${SIGNATURE}"
 
           echo "Invoking Lambda..."
           curl -s -X POST "${ENDPOINT}" \
