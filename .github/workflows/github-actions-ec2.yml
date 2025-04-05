@@ -1,94 +1,66 @@
-name: Deploy Node.js + React to EC2
+name: Invoke Lambda
 
 on:
-  push:
-    branches:
-      - master  # Runs only when code is pushed to master
+  workflow_dispatch:
 
 jobs:
-  deploy:
-    name: Deploy to AWS EC2
-    runs-on: ubuntu-latest  # Change this if using a self-hosted runner
+  invoke:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ap-south-1
+      FUNCTION_NAME: Trigger-Backend-Deployment
+      PAYLOAD: '{}'
 
     steps:
-      # Step 1: Checkout the repository
-      - name: Checkout the repository
-        uses: actions/checkout@v2
-
-      # Step 2: Set up Node.js
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      # Step 3: Install backend dependencies
-      - name: Install backend dependencies
+      - name: Curl invoke Lambda
         run: |
-          cd server
-          npm install
-          npm install dotenv cors  # Ensure dotenv and cors are installed
+          SERVICE="lambda"
+          HOST="lambda.${AWS_REGION}.amazonaws.com"
+          URI="/2015-03-31/functions/${FUNCTION_NAME}/invocations"
+          ENDPOINT="https://${HOST}${URI}"
 
-      # Step 4: Build the frontend
-      - name: Install frontend dependencies & build
-        run: |
-          cd client
-          npm install
-          npm run build
-          cd ..
+          AMZ_DATE=$(date -u +"%Y%m%dT%H%M%SZ")
+          DATE_STAMP=$(date -u +"%Y%m%d")
 
-      # Step 5: Deploy Backend & Frontend to EC2
-      - name: Deploy to EC2
-        uses: easingthemes/ssh-deploy@main
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
-          REMOTE_HOST: ${{ secrets.HOST_DNS }}
-          REMOTE_USER: ec2-user  # Amazon Linux default user
-          TARGET: /home/ec2-user/Test_App  # Deployment path
-          ARGS: "-rltgoDzvO --progress --exclude='node_modules' --exclude='.git'"  # Ensures build is copied
+          hash() {
+            printf "%s" "$1" | openssl dgst -sha256 | sed 's/^.* //'
+          }
 
-      # Step 6: SSH into EC2 & Restart Services
-      - name: SSH into EC2 & Restart Services
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.HOST_DNS }}
-          username: ec2-user  # Amazon Linux default user
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -e  # Stop execution if any command fails (rollback prevention)
+          hmac() {
+            printf "%s" "$2" | openssl dgst -sha256 -mac HMAC -macopt "key:$1" | sed 's/^.* //'
+          }
 
-            echo "🚀 Starting Deployment on EC2 (Amazon Linux 2023)"
+          PAYLOAD_HASH=$(hash "$PAYLOAD")
 
-            # ✅ Navigate to backend and install dependencies
-            cd /home/ec2-user/Test_App/server
-            npm install
-            npm install dotenv cors  # Ensure dotenv and cors are installed
+          CANONICAL_REQUEST="POST
+${URI}
 
-            # ✅ Restart PM2 process correctly
-            pm2 delete all || true  # Ignore errors if no processes exist
-            pm2 restart all || pm2 start server.js --name "backend" --watch
-            pm2 save
+host:${HOST}
+x-amz-date:${AMZ_DATE}
 
-            # ✅ Ensure .env file is present
-            if [ -f /home/ec2-user/Test_App/server/.env ]; then
-              echo "✅ .env file exists, proceeding..."
-            else
-              echo "❌ .env file missing! Exiting deployment..."
-              exit 1
-            fi
+host;x-amz-date
+${PAYLOAD_HASH}"
 
-            # ✅ Deploy frontend (React)
-            cd /home/ec2-user/Test_App/client
+          CANONICAL_HASH=$(printf "%s" "$CANONICAL_REQUEST" | openssl dgst -sha256 | sed 's/^.* //')
+          CREDENTIAL_SCOPE="${DATE_STAMP}/${AWS_REGION}/${SERVICE}/aws4_request"
+          STRING_TO_SIGN="AWS4-HMAC-SHA256
+${AMZ_DATE}
+${CREDENTIAL_SCOPE}
+${CANONICAL_HASH}"
 
-            # Fix permissions to prevent errors
-            sudo chown -R ec2-user:ec2-user /usr/share/nginx/html
+          K_DATE=$(hmac "AWS4${AWS_SECRET_ACCESS_KEY}" "$DATE_STAMP")
+          K_REGION=$(hmac "$K_DATE" "$AWS_REGION")
+          K_SERVICE=$(hmac "$K_REGION" "$SERVICE")
+          K_SIGNING=$(hmac "$K_SERVICE" "aws4_request")
+          SIGNATURE=$(printf "%s" "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt "key:$K_SIGNING" | sed 's/^.* //')
 
-            # Remove old frontend build files
-            sudo rm -rf /usr/share/nginx/html/*
+          AUTH_HEADER="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${CREDENTIAL_SCOPE}, SignedHeaders=host;x-amz-date, Signature=${SIGNATURE}"
 
-            # Copy new frontend build files
-            sudo cp -r build/* /usr/share/nginx/html/
-
-            # ✅ Restart Nginx to apply changes
-            sudo systemctl restart nginx
-
-            echo "✅ Deployment completed successfully!"
+          curl -s -X POST "${ENDPOINT}" \
+            -H "Content-Type: application/json" \
+            -H "X-Amz-Date: ${AMZ_DATE}" \
+            -H "Authorization: ${AUTH_HEADER}" \
+            -d "${PAYLOAD}"
