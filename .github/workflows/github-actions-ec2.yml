@@ -1,94 +1,94 @@
 name: Deploy Node.js + React to EC2
 
 on:
-push:
-branches:
-- master # Runs only when code is pushed to master
+  push:
+    branches:
+      - master # Runs only when code is pushed to master
 
 jobs:
-deploy:
-name: Deploy to AWS EC2
-runs-on: ubuntu-latest # Change this if using a self-hosted runner
+  deploy:
+    name: Deploy to AWS EC2
+    runs-on: ubuntu-latest # Change this if using a self-hosted runner
 
-steps:
-# Step 1: Checkout the repository
-- name: Checkout the repository
-uses: actions/checkout@v2
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout the repository
+        uses: actions/checkout@v2
 
-# Step 2: Set up Node.js
-- name: Set up Node.js
-uses: actions/setup-node@v4
-with:
-node-version: 18
+      # Step 2: Set up Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
 
-# Step 3: Install backend dependencies
-- name: Install backend dependencies
-run: |
-cd server
-npm install
-npm install dotenv cors # Ensure dotenv and cors are installed
+      # Step 3: Install backend dependencies
+      - name: Install backend dependencies
+        run: |
+          cd server
+          npm install
+          npm install dotenv cors # Ensure dotenv and cors are installed
 
-# Step 4: Build the frontend
-- name: Install frontend dependencies & build
-run: |
-cd client
-npm install
-npm run build
-cd ..
+      # Step 4: Build the frontend
+      - name: Install frontend dependencies & build
+        run: |
+          cd client
+          npm install
+          npm run build
+          cd ..
 
-# Step 5: Deploy Backend & Frontend to EC2
-- name: Deploy to EC2
-uses: easingthemes/ssh-deploy@main
-env:
-SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
-REMOTE_HOST: ${{ secrets.HOST_DNS }}
-REMOTE_USER: ec2-user # Amazon Linux default user
-TARGET: /home/ec2-user/Test_App # Deployment path
-ARGS: "-rltgoDzvO --progress --exclude='node_modules' --exclude='.git'" # Ensures build is copied
+      # Step 5: Deploy Backend & Frontend to EC2
+      - name: Deploy to EC2
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.HOST_DNS }}
+          REMOTE_USER: ec2-user # Amazon Linux default user
+          TARGET: /home/ec2-user/Test_App # Deployment path
+          ARGS: "-rltgoDzvO --progress --exclude='node_modules' --exclude='.git'" # Ensures build is copied
 
-# Step 6: SSH into EC2 & Restart Services
-- name: SSH into EC2 & Restart Services
-uses: appleboy/ssh-action@master
-with:
-host: ${{ secrets.HOST_DNS }}
-username: ec2-user # Amazon Linux default user
-key: ${{ secrets.EC2_SSH_KEY }}
-script: |
-set -e # Stop execution if any command fails (rollback prevention)
+      # Step 6: SSH into EC2 & Restart Services
+      - name: SSH into EC2 & Restart Services
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST_DNS }}
+          username: ec2-user # Amazon Linux default user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e # Stop execution if any command fails (rollback prevention)
 
-echo "🚀 Starting Deployment on EC2 (Amazon Linux 2023)"
+            echo "🚀 Starting Deployment on EC2 (Amazon Linux 2023)"
 
-# ✅ Navigate to backend and install dependencies
-cd /home/ec2-user/Test_App/server
-npm install
-npm install dotenv cors # Ensure dotenv and cors are installed
+            # ✅ Navigate to backend and install dependencies
+            cd /home/ec2-user/Test_App/server
+            npm install
+            npm install dotenv cors # Ensure dotenv and cors are installed
 
-# ✅ Restart PM2 process correctly
-pm2 delete all || true # Ignore errors if no processes exist
-pm2 restart all || pm2 start server.js --name "backend" --watch
-pm2 save
+            # ✅ Restart PM2 process correctly
+            pm2 delete all || true # Ignore errors if no processes exist
+            pm2 restart all || pm2 start server.js --name "backend" --watch
+            pm2 save
 
-# ✅ Ensure .env file is present
-if [ -f /home/ec2-user/Test_App/server/.env ]; then
-echo "✅ .env file exists, proceeding..."
-else
-echo "❌ .env file missing! Exiting deployment..."
-exit 1
-fi
+            # ✅ Ensure .env file is present
+            if [ -f /home/ec2-user/Test_App/server/.env ]; then
+              echo "✅ .env file exists, proceeding..."
+            else
+              echo "❌ .env file missing! Exiting deployment..."
+              exit 1
+            fi
 
-# ✅ Deploy frontend (React)
-cd /home/ec2-user/Test_App/client
+            # ✅ Deploy frontend (React)
+            cd /home/ec2-user/Test_App/client
 
-# Fix permissions to prevent errors
-sudo chown -R ec2-user:ec2-user /usr/share/nginx/html
+            # Fix permissions to prevent errors
+            sudo chown -R ec2-user:ec2-user /usr/share/nginx/html
 
-# Remove old frontend build files
-sudo rm -rf /usr/share/nginx/html/*
+            # Remove old frontend build files
+            sudo rm -rf /usr/share/nginx/html/*
 
-# Copy new frontend build files
-sudo cp -r build/* /usr/share/nginx/html/
+            # Copy new frontend build files
+            sudo cp -r build/* /usr/share/nginx/html/
 
-# ✅ Restart Nginx to apply changes
-sudo systemctl restart nginx
+            # ✅ Restart Nginx to apply changes
+            sudo systemctl restart nginx
 
-echo "✅ Deployment completed successfully!"
+            echo "✅ Deployment completed successfully!"
