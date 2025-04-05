@@ -15,6 +15,9 @@ jobs:
       PAYLOAD: '{}'
 
     steps:
+      - name: Install xxd (if missing)
+        run: sudo apt-get update && sudo apt-get install -y xxd
+
       - name: Invoke Lambda via curl
         run: |
           SERVICE="lambda"
@@ -29,10 +32,10 @@ jobs:
             printf "%s" "$1" | openssl dgst -sha256 | awk '{print $2}'
           }
 
-          hmac() {
-            key="$1"
-            data="$2"
-            printf "%s" "$data" | openssl dgst -sha256 -mac HMAC -macopt "key:$key" | awk '{print $2}'
+          hmac_bin() {
+            local key_hex="$1"
+            local data="$2"
+            printf "%s" "$data" | openssl dgst -sha256 -mac HMAC -macopt hexkey:"$key_hex" | awk '{print $2}'
           }
 
           PAYLOAD_HASH=$(hash "$PAYLOAD")
@@ -47,13 +50,14 @@ jobs:
           STRING_TO_SIGN=$(printf "AWS4-HMAC-SHA256\n%s\n%s\n%s" \
             "$AMZ_DATE" "$CREDENTIAL_SCOPE" "$CANONICAL_REQUEST_HASH")
 
-          K_SECRET="AWS4${AWS_SECRET_ACCESS_KEY}"
-          K_DATE=$(hmac "$K_SECRET" "$DATE_STAMP")
-          K_REGION=$(hmac "$K_DATE" "$AWS_REGION")
-          K_SERVICE=$(hmac "$K_REGION" "$SERVICE")
-          K_SIGNING=$(hmac "$K_SERVICE" "aws4_request")
+          # Hex encode secret key correctly
+          K_SECRET=$(printf "AWS4${AWS_SECRET_ACCESS_KEY}" | xxd -p -c 256)
+          K_DATE=$(hmac_bin "$K_SECRET" "$DATE_STAMP")
+          K_REGION=$(hmac_bin "$K_DATE" "$AWS_REGION")
+          K_SERVICE=$(hmac_bin "$K_REGION" "$SERVICE")
+          K_SIGNING=$(hmac_bin "$K_SERVICE" "aws4_request")
 
-          SIGNATURE=$(printf "%s" "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt "key:$K_SIGNING" | awk '{print $2}')
+          SIGNATURE=$(printf "%s" "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt hexkey:"$K_SIGNING" | awk '{print $2}')
 
           AUTH_HEADER="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${CREDENTIAL_SCOPE}, SignedHeaders=${SIGNED_HEADERS}, Signature=${SIGNATURE}"
 
