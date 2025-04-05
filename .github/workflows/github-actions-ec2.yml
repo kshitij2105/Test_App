@@ -26,42 +26,42 @@ jobs:
           DATE_STAMP=$(date -u "+%Y%m%d")
 
           hash() {
-            printf "%s" "$1" | openssl dgst -sha256 -binary | xxd -p -c 256
+            printf "%s" "$1" | openssl dgst -sha256 | awk '{print $2}'
           }
 
           hmac() {
-            printf "%s" "$2" | openssl dgst -sha256 -mac HMAC -macopt "key:$1" -binary
+            key="$1"
+            data="$2"
+            printf "%s" "$data" | openssl dgst -sha256 -mac HMAC -macopt "key:$key" | awk '{print $2}'
           }
 
-          # Hash the payload
           PAYLOAD_HASH=$(hash "$PAYLOAD")
 
-          # Step 1: Create Canonical Request
           CANONICAL_HEADERS="host:${HOST}\nx-amz-date:${AMZ_DATE}\n"
           SIGNED_HEADERS="host;x-amz-date"
           CANONICAL_REQUEST=$(printf "POST\n%s\n\n%s\n%s\n%s" \
             "$URI" "$CANONICAL_HEADERS" "$SIGNED_HEADERS" "$PAYLOAD_HASH")
 
-          # Step 2: Create String to Sign
-          CANONICAL_REQUEST_HASH=$(printf "%s" "$CANONICAL_REQUEST" | openssl dgst -sha256 -binary | xxd -p -c 256)
+          CANONICAL_REQUEST_HASH=$(printf "%s" "$CANONICAL_REQUEST" | openssl dgst -sha256 | awk '{print $2}')
           CREDENTIAL_SCOPE="${DATE_STAMP}/${AWS_REGION}/${SERVICE}/aws4_request"
           STRING_TO_SIGN=$(printf "AWS4-HMAC-SHA256\n%s\n%s\n%s" \
             "$AMZ_DATE" "$CREDENTIAL_SCOPE" "$CANONICAL_REQUEST_HASH")
 
-          # Step 3: Calculate the signature
           K_SECRET="AWS4${AWS_SECRET_ACCESS_KEY}"
           K_DATE=$(hmac "$K_SECRET" "$DATE_STAMP")
           K_REGION=$(hmac "$K_DATE" "$AWS_REGION")
           K_SERVICE=$(hmac "$K_REGION" "$SERVICE")
           K_SIGNING=$(hmac "$K_SERVICE" "aws4_request")
-          SIGNATURE=$(printf "%s" "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt key:- <<< "$K_SIGNING" | sed 's/^.* //')
 
-          # Step 4: Make the request
+          SIGNATURE=$(printf "%s" "$STRING_TO_SIGN" | openssl dgst -sha256 -mac HMAC -macopt "key:$K_SIGNING" | awk '{print $2}')
+
           AUTH_HEADER="AWS4-HMAC-SHA256 Credential=${AWS_ACCESS_KEY_ID}/${CREDENTIAL_SCOPE}, SignedHeaders=${SIGNED_HEADERS}, Signature=${SIGNATURE}"
 
           echo "Invoking Lambda..."
-          curl -s -X POST "${ENDPOINT}" \
+          RESPONSE=$(curl -s -X POST "${ENDPOINT}" \
             -H "Content-Type: application/json" \
             -H "X-Amz-Date: ${AMZ_DATE}" \
             -H "Authorization: ${AUTH_HEADER}" \
-            -d "${PAYLOAD}"
+            -d "${PAYLOAD}")
+
+          echo "Lambda Response: $RESPONSE"
